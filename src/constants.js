@@ -32,6 +32,47 @@ export const LOG_INDEX_FILE = '.gco-logs/index.json';
 export const CURRENT_LOG_FILE = '.gco-logs/current.md';
 export const AGENT_INSTRUCTIONS_FILE = '.gco/AGENT_INSTRUCTIONS.md';
 export const PROJECT_CONTEXT_FILE = '.gco/PROJECT_CONTEXT.md';
+export const GIT_HOOKS_DIR = '.githooks';
+export const PRE_COMMIT_HOOK_FILE = '.githooks/pre-commit';
+export const COMMIT_MSG_HOOK_FILE = '.githooks/commit-msg';
+
+export const BASE_AGENT_CATALOG = {
+  vscode: {
+    name: '@vscode',
+    type: 'copilot-chat',
+    description: 'GitHub Copilot Chat en VS Code',
+  },
+  copilot: {
+    name: '@copilot',
+    type: 'copilot-cli',
+    description: 'GitHub Copilot CLI / terminal workflows',
+  },
+  claude: {
+    name: '@claude',
+    type: 'claude-cli',
+    description: 'Claude CLI',
+  },
+  cursor: {
+    name: '@cursor',
+    type: 'cursor-agent',
+    description: 'Cursor Agent',
+  },
+  windsurf: {
+    name: '@windsurf',
+    type: 'windsurf-agent',
+    description: 'Windsurf Agent',
+  },
+  aider: {
+    name: '@aider',
+    type: 'aider-cli',
+    description: 'Aider CLI',
+  },
+  codex: {
+    name: '@codex',
+    type: 'openai-codex-cli',
+    description: 'OpenAI Codex CLI',
+  },
+};
 
 export const DEFAULT_CONFIG = {
   version: '1.0.0',
@@ -42,16 +83,15 @@ export const DEFAULT_CONFIG = {
     repo: '',
     owner: '',
   },
-  agents: {
-    vscode: {
-      name: '@vscode',
-      type: 'copilot-chat',
-    },
-    copilot: {
-      name: '@copilot',
-      type: 'copilot-cli',
-    },
-  },
+  agents: Object.fromEntries(
+    Object.entries(BASE_AGENT_CATALOG).map(([id, value]) => [
+      id,
+      {
+        name: value.name,
+        type: value.type,
+      },
+    ])
+  ),
   log: {
     autoArchive: false,
     archiveTime: '23:59',
@@ -59,6 +99,10 @@ export const DEFAULT_CONFIG = {
   templates: {
     type: 'generic',
   },
+  strictMode: false,
+  mode: 'execution',
+  requireContextComplete: false,
+  requireTasksBeforeCode: false,
 };
 
 export const TEMPLATES = {

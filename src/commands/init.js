@@ -13,6 +13,10 @@ import {
   DEVELOP_LOG_FILE,
   AGENT_INSTRUCTIONS_FILE,
   PROJECT_CONTEXT_FILE,
+  GIT_HOOKS_DIR,
+  PRE_COMMIT_HOOK_FILE,
+  COMMIT_MSG_HOOK_FILE,
+  BASE_AGENT_CATALOG,
   DEFAULT_CONFIG,
 } from '../constants.js';
 import { saveConfig } from '../config.js';
@@ -22,10 +26,27 @@ import { printHeader, success, info, warn } from '../format.js';
 
 // ─── Agent Templates ───────────────────────────────────────────
 
-const VSCODE_TEMPLATE = `# Template para Agente VS Code (@vscode)
+function titleFromAgentId(agentId) {
+  if (agentId === 'vscode') return 'VS Code Copilot Chat';
+  if (agentId === 'copilot') return 'GitHub Copilot CLI';
+  if (agentId === 'claude') return 'Claude CLI';
+  if (agentId === 'cursor') return 'Cursor Agent';
+  if (agentId === 'windsurf') return 'Windsurf Agent';
+  if (agentId === 'aider') return 'Aider CLI';
+  if (agentId === 'codex') return 'OpenAI Codex CLI';
+  return agentId;
+}
+
+function generateAgentTemplate(agentId, agentConfig) {
+  return `# Template para Agente ${titleFromAgentId(agentId)} (${agentConfig.name})
 
 ## Rol
 Eres un agente de desarrollo trabajando en un equipo con otros agentes IA.
+
+## Perfil
+- **ID:** ${agentId}
+- **Tag:** ${agentConfig.name}
+- **Tipo:** ${agentConfig.type}
 
 ## Instrucciones
 1. Lee tu briefing completo antes de empezar
@@ -36,27 +57,10 @@ Eres un agente de desarrollo trabajando en un equipo con otros agentes IA.
 
 ## Convenciones
 - Commits: \`[TASK-XXX] descripción\`
-- Branches: \`agent/vscode/TASK-XXX\`
+- Branches: \`agent/${agentId}/TASK-XXX\`
 - Comunicación: vía DEVELOP_LOG.md
 `;
-
-const COPILOT_TEMPLATE = `# Template para Agente Copilot (@copilot)
-
-## Rol
-Eres un agente de desarrollo trabajando en un equipo con otros agentes IA.
-
-## Instrucciones
-1. Lee tu briefing completo antes de empezar
-2. Usa \`gco log\` para registrar tu progreso
-3. Coordina con otros agentes a través de DEVELOP_LOG.md
-4. Commit frecuente con prefijo [TASK-XXX]
-5. Al terminar, marca como review con \`gco task status TASK-XXX review\`
-
-## Convenciones
-- Commits: \`[TASK-XXX] descripción\`
-- Branches: \`agent/copilot/TASK-XXX\`
-- Comunicación: vía DEVELOP_LOG.md
-`;
+}
 
 // ─── Git Branch Helpers ────────────────────────────────────────
 
@@ -121,6 +125,83 @@ function ensureBranch(projectRoot, branchName, baseBranch = null) {
   success(`Rama '${branchName}' configurada`);
 }
 
+function createStrictHooks(projectRoot) {
+  const hooksDir = path.join(projectRoot, GIT_HOOKS_DIR);
+  fs.mkdirSync(hooksDir, { recursive: true });
+
+  const preCommitHook = `#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ ! -f ".gco/config.json" ]]; then
+  exit 0
+fi
+
+STRICT_MODE=$(node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(".gco/config.json","utf8"));process.stdout.write(String(Boolean(c.strictMode)));')
+MODE=$(node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(".gco/config.json","utf8"));process.stdout.write(c.mode||"execution");')
+
+if [[ "$STRICT_MODE" != "true" ]]; then
+  exit 0
+fi
+
+if [[ "$MODE" == "planning" ]]; then
+  STAGED=$(git diff --cached --name-only)
+  if [[ -n "$STAGED" ]]; then
+    DISALLOWED=$(echo "$STAGED" | grep -Ev '^(\.gco/|\.gco-logs/|\.githooks/|\.gitignore$|tasks\.md$|DEVELOP_LOG\.md$|README\.md$|docs/)' || true)
+    if [[ -n "$DISALLOWED" ]]; then
+      echo "❌ Modo estricto/planning: solo se permiten cambios de planificación (.gco, docs, logs, tasks.md)."
+      echo "$DISALLOWED"
+      exit 1
+    fi
+  fi
+fi
+`;
+
+  const commitMsgHook = `#!/usr/bin/env bash
+set -euo pipefail
+
+MSG_FILE="$1"
+MSG=$(cat "$MSG_FILE")
+
+if echo "$MSG" | grep -Eq '^\[TASK-[0-9]+\]'; then
+  exit 0
+fi
+
+if echo "$MSG" | grep -Eq '^chore: (initial|initialize|bootstrap|setup)'; then
+  exit 0
+fi
+
+if echo "$MSG" | grep -Eq '^Merge '; then
+  exit 0
+fi
+
+echo "❌ Commit inválido: debe iniciar con [TASK-XXX] en modo estricto."
+echo "Ejemplo: [TASK-001] feat: implementar autenticación"
+exit 1
+`;
+
+  fs.writeFileSync(path.join(projectRoot, PRE_COMMIT_HOOK_FILE), preCommitHook, {
+    encoding: 'utf-8',
+    mode: 0o755,
+  });
+
+  fs.writeFileSync(path.join(projectRoot, COMMIT_MSG_HOOK_FILE), commitMsgHook, {
+    encoding: 'utf-8',
+    mode: 0o755,
+  });
+}
+
+function activateHooksPath(projectRoot) {
+  execSync(`git config core.hooksPath ${GIT_HOOKS_DIR}`, { cwd: projectRoot, stdio: 'ignore' });
+}
+
+function disableHooksPath(projectRoot) {
+  try {
+    execSync('git config --unset core.hooksPath', { cwd: projectRoot, stdio: 'ignore' });
+  } catch {
+    // ignore if not configured
+  }
+}
+
 // ─── File Generators ───────────────────────────────────────────
 
 function generateAgentInstructions() {
@@ -145,14 +226,31 @@ Eres el **Agente Principal de Planificación** de este proyecto, operando con gc
 1. Leer primero:
   - \`.gco/PROJECT_CONTEXT.md\`
   - \`.gco/AGENT_INSTRUCTIONS.md\`
-2. Si el backlog está vacío o incompleto, crear tareas inmediatamente con \`gco task create\`.
-3. No editar \`tasks.md\` manualmente.
-4. No asignar tareas ni implementar código durante planificación inicial.
-5. Si durante la conversación se acuerda una nueva tarea/cambio/alcance:
+2. Si ya tienes información suficiente del proyecto por la conversación, debes completar/actualizar \`.gco/PROJECT_CONTEXT.md\` antes de continuar.
+3. Durante toda la conversación, mantener \`.gco/PROJECT_CONTEXT.md\` actualizado con nueva información del usuario (arquitectura, alcance, restricciones, stack, decisiones).
+4. Asegurar que \`.gitignore\` incluya artefactos runtime de gco (mínimo: \`.gco-logs/\` y temporales de gco si existieran).
+5. Antes de escribir cualquier código, preguntar explícitamente al usuario:
+
+   **"¿Quieres que:**
+   **A) primero cree/actualice las tareas del backlog con gco task create, o**
+   **B) vayamos directo a implementar código?"**
+
+6. Si el usuario elige **A** (recomendado):
+  - crear tareas con \`gco task create\`
+  - confirmar IDs \`TASK-XXX\` creados
+  - ejecutar \`gco task list\` y resumir backlog
+  - **no implementar código aún**
+7. Si el usuario elige **B**:
+  - confirmar que acepta omitir planificación inicial
+  - crear al menos 1 tarea mínima de trazabilidad antes de codificar
+  - luego recién implementar
+8. No editar \`tasks.md\` manualmente.
+9. No asignar tareas ni implementar código durante planificación inicial.
+10. Si durante la conversación se acuerda una nueva tarea/cambio/alcance:
   - crearla en ese momento con \`gco task create\`
   - confirmar al usuario el ID generado (\`TASK-XXX\`)
-6. Mantener tareas pequeñas, claras y verificables; agregar dependencias cuando aplique.
-7. Al cerrar cada ronda de planificación:
+11. Mantener tareas pequeñas, claras y verificables; agregar dependencias cuando aplique.
+12. Al cerrar cada ronda de planificación:
   - ejecutar \`gco task list\`
   - reportar resumen por estado y próximos pasos.
 
@@ -451,8 +549,10 @@ export function registerInitCommand(program) {
     .description('Inicializar proyecto gco en el directorio actual')
     .option('--template <type>', 'Template de proyecto (generic, react, node)', 'generic')
     .option('--force', 'Reinicializar aunque ya exista .gco/')
+    .option('--strict', 'Activar modo estricto (hooks y guardas técnicas)')
     .action(async (options) => {
       const projectRoot = process.cwd();
+      const strictMode = Boolean(options.strict);
 
       printHeader('gco init — Inicializando proyecto');
 
@@ -505,17 +605,40 @@ export function registerInitCommand(program) {
 
       // ── 3. Config ────────────────────────────────────────
       console.log(chalk.bold('\n⚙️  Configuración'));
-      const config = { ...DEFAULT_CONFIG, templates: { type: options.template } };
+      const config = {
+        ...DEFAULT_CONFIG,
+        templates: { type: options.template },
+        strictMode,
+        mode: strictMode ? 'planning' : DEFAULT_CONFIG.mode,
+        requireContextComplete: strictMode,
+        requireTasksBeforeCode: strictMode,
+      };
       saveConfig(projectRoot, config);
       success('Configuración guardada: .gco/config.json');
 
       // ── 4. Agent templates ───────────────────────────────
-      fs.writeFileSync(path.join(projectRoot, AGENTS_DIR, 'vscode-template.md'), VSCODE_TEMPLATE);
-      fs.writeFileSync(
-        path.join(projectRoot, AGENTS_DIR, 'copilot-template.md'),
-        COPILOT_TEMPLATE
-      );
-      success('Templates de agentes creados');
+      const mergedAgents = {
+        ...BASE_AGENT_CATALOG,
+        ...Object.fromEntries(
+          Object.entries(config.agents || {}).map(([agentId, value]) => [
+            agentId,
+            {
+              name: value.name || `@${agentId}`,
+              type: value.type || 'custom',
+            },
+          ])
+        ),
+      };
+
+      for (const [agentId, agentCfg] of Object.entries(mergedAgents)) {
+        const template = generateAgentTemplate(agentId, agentCfg);
+        fs.writeFileSync(
+          path.join(projectRoot, AGENTS_DIR, `${agentId}-template.md`),
+          template,
+          'utf-8'
+        );
+      }
+      success(`Templates de agentes creados (${Object.keys(mergedAgents).length})`);
 
       // ── 5. tasks.md ──────────────────────────────────────
       console.log(chalk.bold('\n📋 Archivos de orquestación'));
@@ -566,19 +689,38 @@ export function registerInitCommand(program) {
       if (fs.existsSync(gitignorePath)) {
         gitignoreContent = fs.readFileSync(gitignorePath, 'utf-8');
       }
-      if (!gitignoreContent.includes('.gco-logs/')) {
-        gitignoreContent += '\n# gco logs (no versionados)\n.gco-logs/\n';
+      const gcoIgnoreEntries = [
+        '# gco runtime artifacts (no versionados)',
+        '.gco-logs/',
+        '.gco/tmp/',
+      ];
+      const missingEntries = gcoIgnoreEntries.filter((entry) => !gitignoreContent.includes(entry));
+      if (missingEntries.length > 0) {
+        gitignoreContent += `\n${missingEntries.join('\n')}\n`;
         fs.writeFileSync(gitignorePath, gitignoreContent, 'utf-8');
-        success('.gco-logs/ agregado a .gitignore');
+        success('Entradas de gco agregadas a .gitignore');
       }
 
-      // ── 10. Ramas main y develop ─────────────────────────
+      // ── 10. Modo estricto (opcional) ────────────────────
+      if (strictMode) {
+        createStrictHooks(projectRoot);
+        activateHooksPath(projectRoot);
+        success('Modo estricto activado: hooks instalados en .githooks/');
+      } else if (options.force) {
+        disableHooksPath(projectRoot);
+        info('Modo estricto desactivado (core.hooksPath limpiado si existía)');
+      }
+
+      // ── 11. Ramas main y develop ─────────────────────────
       ensureBranch(projectRoot, 'main');
       ensureBranch(projectRoot, 'develop', 'main');
 
-      // ── 11. Commit de la estructura ──────────────────────
+      // ── 12. Commit de la estructura ──────────────────────
       try {
-        execSync('git add .gco/ tasks.md DEVELOP_LOG.md .gitignore', {
+        const addTargets = strictMode
+          ? '.gco/ tasks.md DEVELOP_LOG.md .gitignore .githooks/'
+          : '.gco/ tasks.md DEVELOP_LOG.md .gitignore';
+        execSync(`git add ${addTargets}`, {
           cwd: projectRoot,
           stdio: 'ignore',
         });
@@ -610,10 +752,16 @@ export function registerInitCommand(program) {
       console.log(chalk.gray('   .gco-logs/                 ← logs (no versionados)'));
       console.log(chalk.gray('   tasks.md                   ← board de tareas'));
       console.log(chalk.gray('   DEVELOP_LOG.md             ← log de desarrollo'));
+      if (strictMode) {
+        console.log(chalk.gray('   .githooks/                 ← guardas técnicas (modo estricto)'));
+      }
       console.log();
       console.log(chalk.white('🔀 Ramas configuradas:'));
       console.log(chalk.gray('   main    → producción (protegida)'));
       console.log(chalk.gray('   develop → integración'));
+      if (strictMode) {
+        console.log(chalk.gray('   modo    → planning (estricto)'));
+      }
       console.log();
       console.log(chalk.white('📝 Próximos pasos:'));
       console.log(chalk.cyan('  1.') + chalk.gray(' Edita .gco/PROJECT_CONTEXT.md con info de tu proyecto'));

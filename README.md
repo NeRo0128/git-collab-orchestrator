@@ -14,6 +14,9 @@
 - `.gco/briefings/` = contexto por tarea/agente
 - ramas por tarea/agente = `agent/<agente>/<TASK-ID>`
 
+Catálogo base incluido: `vscode`, `copilot`, `claude`, `cursor`, `windsurf`, `aider`, `codex`.
+También puedes agregar agentes custom vía configuración sin tocar el core.
+
 Incluye política de planificación para que el **agente principal** cree/actualice tareas acordadas durante la conversación.
 
 ## 🚀 Instalación
@@ -62,9 +65,29 @@ gco review --list
 - `.gco/briefings/`
 - `.gco-logs/` y `DEVELOP_LOG.md`
 - `tasks.md` inicial
-- `.gitignore` con `.gco-logs/`
+- `.gitignore` con artefactos runtime de gco (`.gco-logs/`, `.gco/tmp/`)
 
 Además, intenta commit automático de la inicialización.
+
+## 🔐 Modo estricto (opcional)
+
+Si quieres aplicar guardas técnicas (no solo instrucciones), usa:
+
+```bash
+gco init --strict
+```
+
+Con `--strict`, además de la estructura normal:
+
+- activa `strictMode` en `.gco/config.json`
+- establece `mode: planning`
+- habilita validaciones de contexto/tareas antes de codificar
+- instala hooks en `.githooks/` y configura:
+	- `git config core.hooksPath .githooks`
+	- `pre-commit`: bloquea commits de código en modo planning
+	- `commit-msg`: exige formato `[TASK-XXX]` (con excepciones de bootstrap)
+
+Sin `--strict`, el comportamiento actual se mantiene (sin hooks bloqueantes).
 
 ## 🧠 Política de planificación (incluida)
 
@@ -84,6 +107,7 @@ Las instrucciones generadas incluyen que el agente principal debe:
 |---------|-------------|
 | `gco init` | Inicializa estructura de orquestación |
 | `gco init --force` | Regenera archivos de orquestación/políticas |
+| `gco init --strict` | Inicializa con guardas técnicas (hooks + modo planning) |
 | `gco init --template react` | Usa template de proyecto |
 
 ### Tareas

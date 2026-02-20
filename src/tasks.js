@@ -238,6 +238,11 @@ export function generateTasksContent(tasks, metadata = {}) {
 - \`[ASSIGNED:]\` - Sin asignar (cualquier agente puede tomarla)
 - \`[ASSIGNED:@vscode]\` - Asignada a agente VS Code
 - \`[ASSIGNED:@copilot]\` - Asignada a agente Copilot CLI
+- \`[ASSIGNED:@claude]\` - Asignada a agente Claude CLI
+- \`[ASSIGNED:@cursor]\` - Asignada a agente Cursor Agent
+- \`[ASSIGNED:@windsurf]\` - Asignada a agente Windsurf Agent
+- \`[ASSIGNED:@aider]\` - Asignada a agente Aider CLI
+- \`[ASSIGNED:@codex]\` - Asignada a agente OpenAI Codex CLI
 - \`[ASSIGNED:@nombre]\` - Otros agents (extensible)
 
 ## Reglas para Agents

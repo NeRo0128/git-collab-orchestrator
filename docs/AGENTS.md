@@ -1,87 +1,75 @@
 # 🤖 Guía de Agentes
 
-## Agentes Soportados
+## Enfoque híbrido (catálogo + custom)
 
-`gco` es agnóstico al tipo de agente IA. Cualquier agente que pueda leer/escribir archivos y ejecutar comandos puede coordinarse.
+`gco` soporta una arquitectura escalable:
 
-### VS Code Copilot Chat (@vscode)
+- **Catálogo base oficial** de agentes comunes (creado automáticamente por `gco init`).
+- **Extensión custom** vía configuración (`gco config set agents.<id>...`) sin tocar código.
 
-El agente trabaja directamente en VS Code con acceso al terminal.
+## Catálogo base de agentes
 
-**Setup:**
-```bash
-gco config set agents.vscode.name "@vscode"
-gco config set agents.vscode.type "copilot-chat"
-```
+Al ejecutar `gco init`, se crean templates en `.gco/agents/` para:
 
-**Flujo del agente:**
-1. Lee su briefing: `cat .gco/briefings/TASK-XXX-vscode.md`
-2. Cambia a su rama: `git checkout agent/vscode/TASK-XXX`
-3. Registra inicio: `gco log --agent vscode --task TASK-XXX --type start "Iniciando"`
-4. Trabaja en el código
-5. Registra progreso: `gco log --type progress "50% completado"`
-6. Al terminar: `gco log --type complete "Tarea completada"`
+- `vscode` (`@vscode`, `copilot-chat`)
+- `copilot` (`@copilot`, `copilot-cli`)
+- `claude` (`@claude`, `claude-cli`)
+- `cursor` (`@cursor`, `cursor-agent`)
+- `windsurf` (`@windsurf`, `windsurf-agent`)
+- `aider` (`@aider`, `aider-cli`)
+- `codex` (`@codex`, `openai-codex-cli`)
+
+Cada agente recibe su template `<id>-template.md` y briefing específico por tarea.
+
+## Flujo estándar por agente
+
+1. Leer briefing: `cat .gco/briefings/TASK-XXX-<agente>.md`
+2. Checkout a rama: `git checkout agent/<agente>/TASK-XXX`
+3. Registrar inicio: `gco log --agent <agente> --task TASK-XXX --type start "Iniciando"`
+4. Trabajar en código
+5. Registrar progreso: `gco log --agent <agente> --task TASK-XXX --type progress "..."`
+6. Marcar revisión: `gco task status TASK-XXX review`
 7. Commit: `git commit -m "[TASK-XXX] descripción"`
 
-**Prompt sugerido para el agente:**
-```
-Eres un agente de desarrollo (@vscode). Tu tarea actual está en el briefing. 
-Antes de empezar, ejecuta: gco log --agent vscode --task TASK-XXX --type start "Iniciando"
-Registra tu progreso con: gco log --type progress "descripción"
-Coordina con otros agentes leyendo: gco read
-Al terminar: gco task status TASK-XXX review
-```
+## Agentes custom (extensión)
 
-### GitHub Copilot CLI (@copilot)
-
-Para uso con `gh copilot suggest` o similares, donde tú actúas como intermediario.
-
-**Setup:**
-```bash
-gco config set agents.copilot.name "@copilot"
-gco config set agents.copilot.type "copilot-cli"
-```
-
-**Flujo:**
-1. Tú lees el briefing: `gco prompt TASK-XXX copilot`
-2. Usas copilot para generar código
-3. Tú registras progreso: `gco log --agent copilot --task TASK-XXX --type progress "..."`
-4. Tú haces commit
-
-### Agentes Personalizados
-
-Puedes agregar cualquier agente:
+Puedes agregar cualquier agente adicional sin tocar código:
 
 ```bash
-gco config set agents.claude.name "@claude"
-gco config set agents.claude.type "custom"
+gco config set agents.myagent.name "@myagent"
+gco config set agents.myagent.type "custom"
 ```
 
-Crea un template en `.gco/agents/claude-template.md` con instrucciones específicas.
-
-## Coordinación entre Agentes
-
-### Comunicación vía DEVELOP_LOG.md
-
-Los agentes se comunican dejando mensajes en el log:
+Luego crea su template:
 
 ```bash
-# Agente 1 anuncia una decisión
+cat > .gco/agents/myagent-template.md << 'EOF'
+# Template para Agente MyAgent (@myagent)
+
+## Rol
+...
+EOF
+```
+
+## Coordinación entre agentes
+
+### Comunicación por log compartido
+
+```bash
 gco log --agent vscode --task TASK-001 --type decision "Usaré zod para validación"
-
-# Agente 2 lee el log y responde
 gco log --agent copilot --task TASK-002 --type answer "Confirmado, uso el mismo esquema"
 ```
 
-### Resolución de Conflictos
+### Resolución de conflictos
 
 Si dos agentes editan el mismo archivo:
-1. `gco validate` detectará la colisión
-2. El humano decide quién tiene prioridad
-3. Se mergea uno primero, luego el otro resuelve conflictos
 
-### Dependencias entre Tareas
+1. `gco validate` detecta colisiones
+2. El humano decide prioridad
+3. Se mergea una rama primero y la otra resuelve conflictos
 
-- Usa el campo **Dependencias** en tasks.md
+### Dependencias entre tareas
+
+- Usa el campo **Dependencias** en `tasks.md`
 - `gco validate` detecta dependencias circulares
-- `gco status` muestra tareas bloqueadas y sus razones
+- `gco status` muestra tareas bloqueadas
