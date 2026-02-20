@@ -30,6 +30,8 @@ export const BRIEFINGS_DIR = '.gco/briefings';
 export const AGENTS_DIR = '.gco/agents';
 export const LOG_INDEX_FILE = '.gco-logs/index.json';
 export const CURRENT_LOG_FILE = '.gco-logs/current.md';
+export const AGENT_INSTRUCTIONS_FILE = '.gco/AGENT_INSTRUCTIONS.md';
+export const PROJECT_CONTEXT_FILE = '.gco/PROJECT_CONTEXT.md';
 
 export const DEFAULT_CONFIG = {
   version: '1.0.0',

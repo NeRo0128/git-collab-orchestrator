@@ -1,184 +1,177 @@
 # 🤖 gco - Git Collaborative Orchestrator
 
-> Orquesta múltiples agentes de IA trabajando en paralelo sobre un proyecto Git.
+> CLI para orquestar agentes IA en paralelo sobre un repositorio Git con tareas, ramas y briefings por agente.
 
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green)](https://nodejs.org)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 ## ¿Qué es gco?
 
-`gco` es un sistema CLI que permite coordinar múltiples agentes de IA (VS Code Copilot Chat, Copilot CLI, Claude, etc.) trabajando simultáneamente en un mismo proyecto. Usa `tasks.md` como fuente de verdad para tareas y `DEVELOP_LOG.md` como memoria compartida de coordinación.
+`gco` te ayuda a coordinar un flujo multi-agente de forma controlada:
+
+- `tasks.md` = backlog y estado de trabajo
+- `DEVELOP_LOG.md` = memoria compartida del proyecto
+- `.gco/briefings/` = contexto por tarea/agente
+- ramas por tarea/agente = `agent/<agente>/<TASK-ID>`
+
+Incluye política de planificación para que el **agente principal** cree/actualice tareas acordadas durante la conversación.
 
 ## 🚀 Instalación
 
 ```bash
-# Instalación global
+# Global
 npm install -g git-collab-orchestrator
 
-# O usar directamente con npx
+# O sin instalar
 npx git-collab-orchestrator init
 ```
 
 ## ⚡ Quick Start
 
 ```bash
-# 1. En tu proyecto Git existente
+# 1) En tu repo
 cd mi-proyecto
 gco init
 
-# 2. Crear tareas
-gco task create --title "Implementar login" --agent vscode
-gco task create --title "API de autenticación" --agent copilot
+# 2) Completar contexto
+# Edita .gco/PROJECT_CONTEXT.md
 
-# 3. Asignar (crea rama y briefing)
+# 3) Planificación (agente principal)
+gco task create --title "Diseñar arquitectura base"
+gco task create --title "Implementar auth API"
+gco task list
+
+# 4) Asignación (crea rama + briefing + log)
 gco assign TASK-001 vscode
 gco assign TASK-002 copilot
 
-# 4. Los agentes trabajan y registran progreso
-gco log --agent vscode --task TASK-001 --type start "Iniciando login"
-gco log --agent copilot --task TASK-002 --type progress "API 50% lista"
-
-# 5. Ver estado
+# 5) Seguimiento
 gco status
-
-# 6. Revisar y aprobar
-gco review TASK-001
-gco approve TASK-001
+gco review --list
 ```
 
-## 📋 Comandos
+## 🆕 ¿Qué agrega `gco init` ahora?
+
+`gco init` (y `gco init --force`) crea/configura:
+
+- repo Git si no existe
+- ramas base `main` y `develop`
+- `.gco/AGENT_INSTRUCTIONS.md` con políticas operativas
+- `.gco/PROJECT_CONTEXT.md` para contexto del proyecto
+- `.gco/agents/` (templates)
+- `.gco/briefings/`
+- `.gco-logs/` y `DEVELOP_LOG.md`
+- `tasks.md` inicial
+- `.gitignore` con `.gco-logs/`
+
+Además, intenta commit automático de la inicialización.
+
+## 🧠 Política de planificación (incluida)
+
+Las instrucciones generadas incluyen que el agente principal debe:
+
+1. Leer `.gco/PROJECT_CONTEXT.md` y `.gco/AGENT_INSTRUCTIONS.md`
+2. Crear backlog con `gco task create` si está vacío/incompleto
+3. Registrar nuevas tareas acordadas en conversación **en el momento**
+4. Confirmar IDs `TASK-XXX`
+5. Cerrar ronda con `gco task list` + resumen
+
+## 📋 Comandos principales
 
 ### Inicialización
 
 | Comando | Descripción |
 |---------|-------------|
-| `gco init` | Inicializar proyecto gco |
-| `gco init --template react` | Inicializar con template React |
+| `gco init` | Inicializa estructura de orquestación |
+| `gco init --force` | Regenera archivos de orquestación/políticas |
+| `gco init --template react` | Usa template de proyecto |
 
-### Gestión de Tareas
+### Tareas
 
 | Comando | Descripción |
 |---------|-------------|
 | `gco task create` | Crear tarea (interactivo) |
-| `gco task create --title "X" --agent vscode` | Crear tarea rápida |
-| `gco task list` | Listar tareas activas |
+| `gco task create --title "X" --description "Y"` | Crear tarea rápida |
+| `gco task list` | Listar tareas |
 | `gco task list --status pending` | Filtrar por estado |
-| `gco task list --assigned @vscode` | Filtrar por agente |
-| `gco task show TASK-001` | Ver detalle de tarea |
-| `gco task status TASK-001 in-progress` | Cambiar estado |
-| `gco task status TASK-001 blocked --reason "..."` | Bloquear con razón |
+| `gco task list --assigned vscode` | Filtrar por agente |
+| `gco task show TASK-001` | Ver detalle |
+| `gco task status TASK-001 review` | Cambiar estado |
 
-### Asignación
-
-| Comando | Descripción |
-|---------|-------------|
-| `gco assign TASK-001 vscode` | Asignar tarea a agente |
-| `gco claim TASK-001` | Auto-asignarse tarea |
-
-### Log de Desarrollo
+### Asignación y ejecución
 
 | Comando | Descripción |
 |---------|-------------|
-| `gco log "mensaje"` | Log rápido (detecta agente/tarea del branch) |
-| `gco log --agent vscode --task TASK-001 --type start "..."` | Log completo |
-| `gco read` | Leer log formateado |
-| `gco archive` | Archivar log del día |
+| `gco assign TASK-001 vscode` | Asigna: actualiza task + crea briefing + crea rama + crea log |
+| `gco claim TASK-001` | Auto-claim según rama actual |
+| `gco prompt TASK-001 vscode` | Imprime briefing/prompt para agente |
 
-### Sincronización GitHub
-
-| Comando | Descripción |
-|---------|-------------|
-| `gco sync` | Sincronizar issues → tasks.md |
-| `gco sync --dry-run` | Ver cambios sin aplicar |
-| `gco sync --issue 42` | Sincronizar issue específico |
-
-### Revisión
+### Seguimiento y revisión
 
 | Comando | Descripción |
 |---------|-------------|
-| `gco review TASK-001` | Revisar tarea (diff, log, criterios) |
-| `gco review --list` | Listar tareas pendientes de review |
+| `gco status` | Estado global |
+| `gco validate` | Valida consistencia |
+| `gco log --type progress "..."` | Agrega entrada al log |
+| `gco read` | Leer log actual |
+| `gco review TASK-001` | Revisar tarea |
 | `gco approve TASK-001` | Aprobar y mergear |
 | `gco reject TASK-001 --reason "..."` | Rechazar |
 
-### Utilidades
+## 📁 Estructura generada
 
-| Comando | Descripción |
-|---------|-------------|
-| `gco status` | Estado completo del proyecto |
-| `gco validate` | Validar consistencia |
-| `gco diff TASK-001` | Diff de tarea vs develop |
-| `gco prompt TASK-001 vscode` | Generar briefing |
-| `gco stats` | Estadísticas del proyecto |
-| `gco config set key value` | Configuración |
-
-## 📁 Estructura del Proyecto
-
-```
+```text
 tu-proyecto/
-├── tasks.md                 # Fuente de verdad (en Git)
-├── DEVELOP_LOG.md           # Log del día actual (en Git)
-├── .gco/                    # Configuración (en Git)
+├── tasks.md
+├── DEVELOP_LOG.md
+├── .gco/
 │   ├── config.json
-│   ├── agents/              # Templates de agentes
-│   └── briefings/           # Briefings generados
-├── .gco-logs/               # Logs históricos (NO en Git)
-│   ├── current.md
-│   ├── index.json
-│   └── YYYY-MM-DD.md
-└── .gitignore
+│   ├── AGENT_INSTRUCTIONS.md
+│   ├── PROJECT_CONTEXT.md
+│   ├── agents/
+│   │   ├── vscode-template.md
+│   │   └── copilot-template.md
+│   └── briefings/
+│       └── TASK-001-vscode.md
+└── .gco-logs/
+	├── current.md
+	├── index.json
+	└── <agente>/
+		└── TASK-001.log
 ```
 
-## 📄 Formato tasks.md
-
-```markdown
-## TASK-001 [STATUS:in-progress] [ASSIGNED:@vscode]
-**Título:** Implementar login
-**Descripción:** Crear formulario de login con validación
-**Criterios de aceptación:**
-- [x] Campo email con validación
-- [ ] Campo password mínimo 8 caracteres
-**Dependencias:** TASK-002
-**Notas técnicas:** Usar react-hook-form + zod
-**Completada:** (vacío)
-```
-
-### Estados
-
-- `pending` — Sin empezar
-- `in-progress` — Agente trabajando
-- `blocked` — Esperando dependencia/otro agente
-- `review` — Completada, esperando aprobación
-- `completed` — Aprobada y mergeada
-
-## 🔧 Configuración
+## 🧪 Desarrollo local
 
 ```bash
-# GitHub
+npm ci
+npm test
+npm link
+
+# smoke test
+mkdir -p /tmp/gco-smoke && cd /tmp/gco-smoke
+git init
+gco init
+gco task create --title "Prueba"
+gco task list
+```
+
+## 🔧 Configuración útil
+
+```bash
+# GitHub sync
 gco config set github.owner mi-usuario
 gco config set github.repo mi-repo
 gco config set github.token ghp_xxx
 
-# Branch principal
+# Branch base para merges/reviews
 gco config set mainBranch develop
-
-# Agentes
-gco config set agents.vscode.name "@vscode"
-gco config set agents.copilot.name "@copilot"
 ```
 
-## 🧪 Tests
+## 📚 Documentación adicional
 
-```bash
-npm test            # Ejecutar tests
-npm run test:watch  # Watch mode
-```
-
-## 📚 Documentación Adicional
-
-- [Guía de Agentes](docs/AGENTS.md) — Cómo usar gco con diferentes agentes IA
-- [Flujos de Trabajo](docs/WORKFLOW.md) — Ejemplos de flujos completos
-- [Configuración](docs/CONFIGURATION.md) — Opciones avanzadas
+- [Guía de Agentes](docs/AGENTS.md)
+- [Flujos de Trabajo](docs/WORKFLOW.md)
+- [Configuración](docs/CONFIGURATION.md)
 
 ## License
 

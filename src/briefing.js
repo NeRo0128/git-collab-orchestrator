@@ -2,7 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 import { format } from 'date-fns';
-import { BRIEFINGS_DIR, AGENTS_DIR } from './constants.js';
+import { BRIEFINGS_DIR, AGENTS_DIR, AGENT_INSTRUCTIONS_FILE, PROJECT_CONTEXT_FILE } from './constants.js';
 import { readCurrentLog } from './log.js';
 
 /**
@@ -25,6 +25,12 @@ export function generateBriefing(projectRoot, task, agentName, config) {
 **ID:** ${task.id}
 **Título:** ${task.title}
 **Descripción:** ${task.description}
+
+## 👤 Asignación
+
+- **Agente asignado:** @${agentName}
+- **Esta tarea es para:** @${agentName}
+- Si no eres **@${agentName}**, detente y avisa al orquestador humano.
 
 ## ✅ Criterios de Aceptación
 
@@ -50,17 +56,34 @@ ${task.notes || '(sin notas)'}
 3. Trabaja en los criterios de aceptación uno por uno
 4. Registra progreso: \`gco log --agent ${agentName} --task ${task.id} --type progress "Avance..."\`
 5. Al terminar: \`gco log --agent ${agentName} --task ${task.id} --type complete "Completado"\`
-6. Commit: \`git commit -m "[${task.id}] <descripción>"\`
+6. Cambiar status: \`gco task status ${task.id} review\`
+7. Commit: \`git commit -m "[${task.id}] <descripción>"\`
 
-## 📊 Contexto del Proyecto
+## 🏗️ Contexto del Proyecto
 
 `;
+
+  // Include project context if available
+  const projectContextPath = path.join(projectRoot, PROJECT_CONTEXT_FILE);
+  if (fs.existsSync(projectContextPath)) {
+    const projectContext = fs.readFileSync(projectContextPath, 'utf-8');
+    // Strip the header (first 3 lines) to avoid duplication
+    const contextLines = projectContext.split('\n');
+    const contextBody = contextLines.slice(3).join('\n').trim();
+    if (contextBody && !contextBody.includes('TODO:')) {
+      briefing += `${contextBody}\n\n`;
+    } else {
+      briefing += `> ⚠️ PROJECT_CONTEXT.md no ha sido completado. Revisa .gco/PROJECT_CONTEXT.md\n\n`;
+    }
+  }
 
   // Add recent log entries for context
   const logContent = readCurrentLog(projectRoot);
   if (logContent) {
     const recentLines = logContent.split('\n').slice(-30).join('\n');
-    briefing += `### Actividad Reciente\n\n${recentLines}\n`;
+    if (recentLines.trim()) {
+      briefing += `### Actividad Reciente\n\n${recentLines}\n`;
+    }
   }
 
   // Try to load agent template
@@ -68,6 +91,12 @@ ${task.notes || '(sin notas)'}
   if (fs.existsSync(templatePath)) {
     const template = fs.readFileSync(templatePath, 'utf-8');
     briefing += `\n## 🤖 Template del Agente\n\n${template}\n`;
+  }
+
+  // Add reference to full instructions
+  const instrPath = path.join(projectRoot, AGENT_INSTRUCTIONS_FILE);
+  if (fs.existsSync(instrPath)) {
+    briefing += `\n---\n> 📖 Lee las reglas completas en: \`cat ${AGENT_INSTRUCTIONS_FILE}\`\n`;
   }
 
   return briefing;

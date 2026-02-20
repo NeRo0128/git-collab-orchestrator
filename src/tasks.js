@@ -242,12 +242,26 @@ export function generateTasksContent(tasks, metadata = {}) {
 
 ## Reglas para Agents
 
-1. **Crear tarea:** Dejar \`[ASSIGNED:]\` vacío, status \`pending\`
-2. **Tomar tarea:** Cambiar \`[ASSIGNED:]\` a tu nombre, status \`in-progress\`
-3. **Completar tarea:** Cambiar status a \`review\`, llenar fecha en **Completada:**
-4. **Bloquear tarea:** Cambiar status a \`blocked\`, agregar **Bloqueada desde:** y **Razón bloqueo:**
-5. **Nunca borrar tareas:** Solo cambiar status
-6. **Sincronizar con GitHub:** Usar \`gco sync\` antes de crear nuevas tareas
+> ⚠️ **NO edites este archivo manualmente.** Usa los comandos \`gco task\` para gestionar tareas.
+
+1. **Crear tarea:** \`gco task create --title "Mi tarea"\`
+2. **Tomar tarea:** El orquestador asigna con \`gco assign TASK-XXX agente\`
+3. **Iniciar trabajo:** \`gco task status TASK-XXX in-progress\`
+4. **Completar tarea:** \`gco task status TASK-XXX review\`
+5. **Bloquear tarea:** \`gco task status TASK-XXX blocked\`
+6. **Nunca borrar tareas:** Solo cambiar status
+7. **Ver estado:** \`gco status\` o \`gco task list\`
+
+## Ejemplo de Tarea
+
+El formato de cada tarea en este archivo es:
+
+- Encabezado: \`## TASK-NNN [STATUS:estado] [ASSIGNED:@agente]\`
+- Campos: **Título**, **Descripción**, **Criterios de aceptación** (checkboxes), **Dependencias**, **Notas técnicas**, **Completada**
+- Separador: \`---\` al final de cada tarea
+
+Para crear tareas usa: \`gco task create --title "Mi tarea"\`
+Para cambiar estado usa: \`gco task status TASK-NNN review\`
 `;
 
   return content;

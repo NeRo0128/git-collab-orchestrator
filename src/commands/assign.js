@@ -1,4 +1,6 @@
 // gco assign and gco claim commands
+import fs from 'fs';
+import path from 'path';
 import chalk from 'chalk';
 import { format } from 'date-fns';
 import { ensureProject, loadConfig } from '../config.js';
@@ -7,6 +9,24 @@ import { addLogEntry } from '../log.js';
 import { generateBriefing, saveBriefing } from '../briefing.js';
 import * as gitOps from '../git.js';
 import { printHeader, success, error, info, warn } from '../format.js';
+import { GCO_LOGS_DIR, AGENT_INSTRUCTIONS_FILE } from '../constants.js';
+
+/**
+ * Create per-agent log directory and initial log file for a task
+ */
+function ensureAgentTaskLog(projectRoot, agent, taskId) {
+  const agentLogDir = path.join(projectRoot, GCO_LOGS_DIR, agent);
+  if (!fs.existsSync(agentLogDir)) {
+    fs.mkdirSync(agentLogDir, { recursive: true });
+  }
+
+  const logFile = path.join(agentLogDir, `${taskId}.log`);
+  if (!fs.existsSync(logFile)) {
+    const header = `# Log: ${taskId} — Agente: @${agent}\n# Creado: ${format(new Date(), 'yyyy-MM-dd HH:mm:ss')}\n${'='.repeat(50)}\n\n`;
+    fs.writeFileSync(logFile, header, 'utf-8');
+  }
+  return logFile;
+}
 
 export function registerAssignCommands(program) {
   // gco assign TASK-XXX agentName
@@ -44,13 +64,17 @@ export function registerAssignCommands(program) {
       });
       success(`tasks.md actualizado: ${taskId} → ${agentTag}`);
 
-      // 2. Generate briefing
+      // 2. Generate briefing (with project context)
       const updatedTask = findTask(projectRoot, taskId);
       const briefingContent = generateBriefing(projectRoot, updatedTask, agent, config);
       const briefingPath = saveBriefing(projectRoot, taskId, agent, briefingContent);
       success(`Briefing generado: ${briefingPath}`);
 
-      // 3. Create git branch
+      // 3. Create per-agent task log
+      const logFile = ensureAgentTaskLog(projectRoot, agent, taskId);
+      success(`Log de agente creado: ${logFile}`);
+
+      // 4. Create git branch
       try {
         await gitOps.createBranch(projectRoot, branchName, config.mainBranch);
         success(`Rama creada: ${branchName}`);
@@ -64,7 +88,7 @@ export function registerAssignCommands(program) {
         info('Puedes crearla manualmente: git checkout -b ' + branchName);
       }
 
-      // 4. Log entry
+      // 5. Log entry
       addLogEntry(projectRoot, {
         agent: 'sistema',
         taskId,
@@ -72,13 +96,29 @@ export function registerAssignCommands(program) {
         message: `Tarea asignada a ${agentTag}. Rama: ${branchName}. Briefing generado.`,
       });
 
+      // 6. Summary with all agent needs
       console.log();
-      console.log(chalk.bold('Próximos pasos:'));
-      console.log(chalk.gray(`  1. git checkout ${branchName}`));
-      console.log(
-        chalk.gray(`  2. gco log --agent ${agent} --task ${taskId} --type start "Iniciando..."`)
-      );
-      console.log(chalk.gray(`  3. Lee el briefing: cat ${briefingPath}`));
+      console.log(chalk.green.bold('✅ Tarea asignada correctamente'));
+      console.log();
+      console.log(chalk.bold('📋 El agente debe hacer lo siguiente:'));
+      console.log(chalk.cyan('  1.') + chalk.gray(` git checkout ${branchName}`));
+      console.log(chalk.cyan('  2.') + chalk.gray(` cat ${briefingPath}`));
+
+      // Check if AGENT_INSTRUCTIONS exists
+      const instrPath = path.join(projectRoot, AGENT_INSTRUCTIONS_FILE);
+      if (fs.existsSync(instrPath)) {
+        console.log(chalk.cyan('  3.') + chalk.gray(` cat ${AGENT_INSTRUCTIONS_FILE}`));
+        console.log(
+          chalk.cyan('  4.') +
+            chalk.gray(` gco log --agent ${agent} --task ${taskId} --type start "Iniciando..."`)
+        );
+      } else {
+        console.log(
+          chalk.cyan('  3.') +
+            chalk.gray(` gco log --agent ${agent} --task ${taskId} --type start "Iniciando..."`)
+        );
+      }
+      console.log();
     });
 
   // gco claim TASK-XXX
